@@ -1,0 +1,3 @@
+[submodule "pytruth"]
+	path = pytruth
+	url = https://github.com/sohaib023/Py-Truth.git

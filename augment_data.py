@@ -130,7 +130,10 @@ def ensure_exists(filename, log_data):
 
 
 def process_files(image_dir, xml_dir, ocr_dir, out_dir, num_samples, log_file):
-    files = [file.split('/')[-1].rsplit('.', 1)[0] for file in glob.glob(os.path.join(xml_dir,'*.xml'))]
+    files = list(map(
+        lambda name: os.path.basename(name).rsplit('.', 1)[0], 
+        glob.glob(os.path.join(xml_dir,'*.xml')))
+    )
     files.sort()
     log_data = []
 

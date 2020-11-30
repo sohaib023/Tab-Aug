@@ -414,126 +414,81 @@ class Augmentor:
         cv2.imshow(window, image)
         cv2.waitKey(0)
 
-        # for i in range(len(self.rows)):
-        #     cv2.line(image, (0, self.rows[i]), (image.shape[1], self.rows[i]), (0, 0, 255), 2)
-        #     if i !=  len(self.rows) - 1:
-        #         ocr = get_bounded_ocr(self.ocr, (0, self.rows[i]), (image.shape[1], self.rows[i + 1]))
-        #         color = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
-        #         for word in ocr:
-        #             cv2.rectangle(image, (word[2], word[3]), (word[4], word[5]), color, 2)
-        
-        # image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
-        # for i in range(len(self.columns)):
-        #     cv2.line(image, (self.columns[i], 0), (self.columns[i], image.shape[0]), (0, 255, 0), 2)
-        #     if i !=  len(self.columns) - 1:
-        #         ocr = get_bounded_ocr(self.ocr, (self.columns[i], 0), (self.columns[i + 1], image.shape[0]))
-        #         color = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
-        #         for word in ocr:
-        #             cv2.rectangle(image, (word[2], word[3]), (word[4], word[5]), color, 2)
-        # cv2.imshow("col", image)
+def augment_table(table, doc_img, doc_ocr):
+    augmentor = Augmentor(table, doc_img, doc_ocr)
 
-        # image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
-        # for i in range(len(self.cells)):
-        #     for j in range(len(self.cells[i])):
-        #         if self.cells[i][j].attrib['dontCare'] == 'true':
-        #             continue
-        #         p1 = (self.cells[i][j].attrib['x0'], self.cells[i][j].attrib['y0'])
-        #         p2 = (self.cells[i][j].attrib['x1'], self.cells[i][j].attrib['y1'])
-        #         ocr = get_bounded_ocr(self.ocr, p1, p2)
-        #         color = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
-        #         for word in ocr:
-        #             cv2.rectangle(image, (word[2], word[3]), (word[4], word[5]), color, 2)
-        #         cv2.rectangle(image, (p1[0] + 2, p1[1] + 2), (p2[0] - 4, p2[1] - 4), color, 2)
-        # cv2.imshow("cell", image)
-        # cv2.waitKey(0)
+    crop_shape = augmentor.image.shape
 
-    # def get_xml(self):
-    #     if not self.verify_cells():
-    #         # print("CELLS ARE INCORRECT!")
-    #         return None
+    # augmentor.visualize("input")
 
-    #     out_root = ET.Element("Table")
-    #     out_root.attrib['x0'] = str(0)
-    #     out_root.attrib['x1'] = str(self.image.shape[1])
-    #     out_root.attrib['y0'] = str(0)
-    #     out_root.attrib['y1'] = str(self.image.shape[0])
-    #     out_root.attrib['orientation'] = self.xml_obj.attrib['orientation']
+    column_rules = [
+        (8, (0, 1), (0, 2)),
+        (5, (0, 2), (0, 2)),
+        (3, (1, 2), (0, 1)),
+    ] 
 
-    #     for row in self.rows[1:-1]:
-    #         out_row = ET.SubElement(out_root, "Row")
-            
-    #         out_row.attrib['x0'] = str(0)
-    #         out_row.attrib['x1'] = str(self.image.shape[1])
-    #         out_row.attrib['y0'] = str(row)
-    #         out_row.attrib['y1'] = str(row)
-            
-    #     for col in self.columns[1:-1]:
-    #         out_col = ET.SubElement(out_root, "Column")
-            
-    #         out_col.attrib['x0'] = str(col)
-    #         out_col.attrib['x1'] = str(col)
-    #         out_col.attrib['y0'] = str(0)
-    #         out_col.attrib['y1'] = str(self.image.shape[0])
+    row_rules = [
+        (14, (0, 2), (1, 4)),
+        (9, (1, 4), (1, 3)),
+        (5, (1, 3), (1, 2)),
+        (3, (0, 2), (0, 1)),
+        (2, (0, 1), (0, 0)),
+    ]
+    # ^ (min_size, (replicate_range), (remove_range))
 
-    #     for i in range(len(self.cells)):
-    #         for j in range(len(self.cells[i])):
-    #             for key in self.cells[i][j].attrib.keys():
-    #                 self.cells[i][j].attrib[key] = str(self.cells[i][j].attrib[key])
-    #             self.cells[i][j].attrib.pop('colspan')
-    #             self.cells[i][j].attrib.pop('rowspan')
-    #             cell = ET.SubElement(out_root, "Cell")
-    #             cell.attrib = self.cells[i][j].attrib
-    #             cell.text = self.cells[i][j].text
-
-    #     return out_root
+    edited = False
 
 
-    # def verify_cells(self):
-    #     try:
-    #         for i in range(len(self.cells)):
-    #             for j in range(len(self.cells[i])):
-    #                 if self.rows[self.cells[i][j].attrib['startRow']] != self.cells[i][j].attrib['y0']:
-    #                     assert False
-    #                 if self.columns[self.cells[i][j].attrib['startCol']] != self.cells[i][j].attrib['x0']:
-    #                     assert False
-    #                 if self.rows[self.cells[i][j].attrib['endRow'] + 1] != self.cells[i][j].attrib['y1']:
-    #                     assert False
-    #                 if self.columns[self.cells[i][j].attrib['endCol'] + 1] != self.cells[i][j].attrib['x1']:
-    #                     assert False
+    for col, replicate_range, remove_range in column_rules:
+        if len(augmentor.t.gtCells[0]) >= col:
 
-    #                 if self.cells[i][j].attrib['endRow'] - self.cells[i][j].attrib['startRow'] != self.cells[i][j].attrib['rowspan']:
-    #                     print("Row span is not correct")
-    #                     return False
-    #                 if self.cells[i][j].attrib['endCol'] - self.cells[i][j].attrib['startCol'] != self.cells[i][j].attrib['colspan']:
-    #                     print("Column span is not correct")
-    #                     return False
-    #                 if self.cells[i][j].attrib['dontCare'] == 'true':
-    #                     if self.cells[i][j].attrib['rowspan'] != 0:
-    #                         print("Row span of dont care cell should be 0")
-    #                         return False
-    #                     if self.cells[i][j].attrib['colspan'] != 0:
-    #                         print("Column span of dont care cell should be 0")
-    #                         return False
+            num_add = random.randint(*replicate_range)
+            counter = 0
+            while counter < num_add:
+                size = len(augmentor.t.gtCells[0])
+                i = random.choice(range(1, size))
+                j = random.choice(range(1, size + 1))
+                edited |= augmentor.replicate_column(i, j)
 
-                    
-    #                 r1 = self.cells[i][j].attrib['startRow']
-    #                 c1 = self.cells[i][j].attrib['startCol']
-    #                 for x in range(self.cells[i][j].attrib['colspan'] + 1):
-    #                     for y in range(self.cells[i][j].attrib['rowspan'] + 1):
-    #                         if x==0 and y==0:
-    #                             continue
-    #                         if self.cells[r1 + y][c1 + x].attrib['dontCare'] != 'true':
-    #                             print("Cell should be dont care")
-    #                             return False
-    #                         if self.cells[r1 + y][c1 + x].attrib['colspan'] != -x:
-    #                             print("Column span incorrect in merged dontcare cells")
-    #                             return False
-    #                         if self.cells[r1 + y][c1 + x].attrib['rowspan'] != -y:
-    #                             print("Row span incorrect in merged dontcare cells")
-    #                             return False
-    #                         self.cells[r1 + y][c1 + x].attrib['colspan'] = 0
-    #                         self.cells[r1 + y][c1 + x].attrib['rowspan'] = 0
-    #     except Exception as e:
-    #         print(e)
-    #         return False
-    #     return True
+                counter += max(1, len(augmentor.t.gtCells[0]) - size)
+                
+            num_remove = random.randint(*remove_range)
+            counter = 0
+            while counter < num_remove:
+                size = len(augmentor.t.gtCells[0])
+                i = random.choice(range(1, size))
+                edited |= augmentor.remove_column(i)
+
+                counter += max(1, size - len(augmentor.t.gtCells[0]))
+            break
+
+    for row, replicate_range, remove_range in row_rules:
+        if len(augmentor.t.gtCells) >= row:
+
+            num_add = random.randint(*replicate_range)
+            counter = 0
+            while counter < num_add:
+                size = len(augmentor.t.gtCells)
+                i = random.choice(range(1, size))
+                j = random.choice(range(1, size + 1))
+                edited |= augmentor.replicate_row(i, j)
+
+                counter += max(1, len(augmentor.t.gtCells) - size)
+
+            num_remove = random.randint(*remove_range)
+            counter = 0
+            while counter < num_remove:
+                size = len(augmentor.t.gtCells)
+                i = random.choice(range(1, size))
+                edited |= augmentor.remove_row(i)
+
+                counter += max(1, size - len(augmentor.t.gtCells))
+            break
+
+    new_shape = augmentor.image.shape
+    # augmentor.visualize("output")
+    if new_shape[0] > doc_img.shape[0] or new_shape[1] > doc_img.shape[1]:
+        print("Generated image is too large. Discarding sample.")
+        return False
+
+    return augmentor.t, augmentor.image, augmentor.ocr

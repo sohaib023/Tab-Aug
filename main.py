@@ -16,7 +16,7 @@ from xml.dom import minidom
 from xml.etree import ElementTree as ET
 
 from augmentor import augment_table
-from pytruth.Document import Document
+from truthpy import Document
 
 def apply_ocr(path, image):
     if os.path.exists(path):

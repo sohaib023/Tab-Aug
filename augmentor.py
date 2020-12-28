@@ -6,8 +6,7 @@ import numpy as np
 from xml.dom import minidom
 from xml.etree import ElementTree as ET
 
-from pytruth.GTElement import GTElement, Row, Column
-from pytruth.Table import Table
+from truthpy import Table, GTElement, Row, Column
 
 def translate_ocr(ocr, translation):
     x_trans, y_trans = translation

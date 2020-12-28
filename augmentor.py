@@ -112,7 +112,10 @@ class Augmentor:
             print("Not convex")
             return False
 
-        if abs(idx_p1 - idx_paste) <= abs(idx_p2 - idx_paste):
+        if idx_c1 == 0:
+            return False
+
+        if abs(idx_p1 - idx_paste) <= abs(idx_p2 - idx_paste) and idx_p1 != 0:
             idx_paste = idx_p1
         else:
             idx_paste = idx_p2 + 1
@@ -166,11 +169,14 @@ class Augmentor:
             print("Not convex")
             return False
 
+        if idx_1 == 0:
+            return False
+
         y1 = self.t.gtCells[idx_1][0].y1
         y2 = self.t.gtCells[idx_2][0].y2
         h = y2 - y1
 
-        if h >= self.image.shape[0] * 0.6 or len(self.t.gtCells) - (idx_1 - idx_2 + 1) <= 3:
+        if h >= self.image.shape[0] * 0.6 or len(self.t.gtCells) - (idx_2 - idx_1 + 1) <= 3:
             return False
 
         new_shape = list(self.image.shape)
@@ -210,7 +216,10 @@ class Augmentor:
             print("Not convex")
             return False
 
-        if abs(idx_p1 - idx_paste) <= abs(idx_p2 - idx_paste):
+        if idx_c1 == 0:
+            return False
+
+        if abs(idx_p1 - idx_paste) <= abs(idx_p2 - idx_paste) and idx_p1 != 0:
             idx_paste = idx_p1
         else:
             idx_paste = idx_p2 + 1
@@ -267,11 +276,14 @@ class Augmentor:
             print("Not convex")
             return False
 
+        if idx_1 == 0:
+            return False
+
         x1 = self.t.gtCells[0][idx_1].x1
         x2 = self.t.gtCells[0][idx_2].x2
         w = x2 - x1
 
-        if w >= self.image.shape[1] * 0.7 or len(self.t.gtCells[0]) - (idx_1 - idx_2 + 1) <= 2:
+        if w >= self.image.shape[1] * 0.7 or len(self.t.gtCells[0]) - (idx_2 - idx_1 + 1) <= 2:
             return False
 
         new_shape = list(self.image.shape)
@@ -304,102 +316,6 @@ class Augmentor:
         self.t.evaluateCells()
 
         return True
-
-    def remove(self, to_remove, is_row):
-        if is_row:
-            minspan = 0
-            maxspan = 0
-            for i in range(len(self.cells[to_remove])):
-                if self.cells[to_remove][i].attrib['rowspan'] != 0:
-                    minspan = min(minspan, self.cells[to_remove][i].attrib['rowspan'])
-            minspan *= -1
-            to_remove -= minspan
-            for i in range(len(self.cells[to_remove])):
-                if self.cells[to_remove][i].attrib['rowspan'] != 0:
-                    maxspan = max(maxspan, self.cells[to_remove][i].attrib['rowspan'])
-
-            y1 = self.rows[to_remove]
-            y2 = self.rows[to_remove + maxspan + 1]
-
-            if y2 - y1 >= self.image.shape[0] or len(self.rows) - (maxspan + 1) < 3:
-                return False
-
-            image_row = self.image[y1:y2, :]
-
-            image_new = np.zeros((self.image.shape[0] - image_row.shape[0], self.image.shape[1]), dtype=self.image.dtype)
-            image_new[:y1, :]           = self.image[:y1, :]
-            image_new[y1:, :]           = self.image[y2:, :]
-
-            ocr_row = get_bounded_ocr(self.ocr, (0, y1), (self.image.shape[1], y2), remove_org=True)
-
-            self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (0, y1), (self.image.shape[1], self.image.shape[0]), remove_org=True), (0, y1 - y2))
-
-            self.rows = [row for row in self.rows if row not in self.rows[to_remove: to_remove + maxspan + 1]]
-            self.rows[to_remove:] = [row - (y2 - y1) for row in self.rows[to_remove:]]
-            self.rows.sort()
-            self.image = image_new
-
-            new_cells = [[None for i in range(len(self.columns) - 1)] for j in range(len(self.rows) - 1)]
-
-            for i in range(len(new_cells)):
-                for j in range(len(new_cells[0])):
-                    if i < to_remove:
-                        new_cells[i][j] = self.cells[i][j]
-                    else:
-                        cell = self.cells[i + maxspan + 1][j]
-                        cell.attrib['y0'] -= y2 - y1
-                        cell.attrib['y1'] -= y2 - y1
-                        cell.attrib['startRow'] -= maxspan + 1
-                        cell.attrib['endRow'] -= maxspan + 1
-                        new_cells[i][j] = cell
-            self.cells = new_cells
-        else:
-            minspan = 0
-            maxspan = 0
-            for i in range(len(self.cells)):
-                if self.cells[i][to_remove].attrib['colspan'] != 0:
-                    minspan = min(minspan, self.cells[i][to_remove].attrib['colspan'])
-            minspan *= -1
-            to_remove -= minspan
-            for i in range(len(self.cells)):
-                if self.cells[i][to_remove].attrib['colspan'] != 0:
-                    maxspan = max(maxspan, self.cells[i][to_remove].attrib['colspan'])
-
-            x1 = self.columns[to_remove]
-            x2 = self.columns[to_remove + maxspan + 1]
-
-            if x2 - x1 >= self.image.shape[1] or len(self.columns) - (maxspan + 1) < 4:
-                return False
-
-            image_col = self.image[:, x1:x2]
-
-            image_new = np.zeros((self.image.shape[0], self.image.shape[1] - image_col.shape[1]), dtype=self.image.dtype)
-            image_new[:, :x1]           = self.image[:, :x1]
-            image_new[:, x1:]           = self.image[:, x2:]
-
-            ocr_col = get_bounded_ocr(self.ocr, (x1, 0), (x2, self.image.shape[0]), remove_org=True)
-
-            self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (x1, 0), (self.image.shape[1], self.image.shape[0]), remove_org=True), (x1 - x2, 0))
-
-            self.columns = [col for col in self.columns if col not in self.columns[to_remove: to_remove + maxspan + 1]]
-            self.columns[to_remove:] = [col - (x2 - x1) for col in self.columns[to_remove:]]
-            self.columns.sort()
-            self.image = image_new
-
-            new_cells = [[None for i in range(len(self.columns) - 1)] for j in range(len(self.rows) - 1)]
-
-            for i in range(len(new_cells)):
-                for j in range(len(new_cells[0])):
-                    if j < to_remove:
-                        new_cells[i][j] = self.cells[i][j]
-                    else:
-                        cell = self.cells[i][j + maxspan + 1]
-                        cell.attrib['x0'] -= x2 - x1
-                        cell.attrib['x1'] -= x2 - x1
-                        cell.attrib['startCol'] -= maxspan + 1
-                        cell.attrib['endCol'] -= maxspan + 1
-                        new_cells[i][j] = cell
-            self.cells = new_cells
 
     def visualize(self, window="image"):
         image = self.image.copy()

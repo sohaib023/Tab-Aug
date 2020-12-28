@@ -62,7 +62,7 @@ def ensure_exists(filename, log_data):
     else:
         return True
 
-def process_files(image_dir, xml_dir, ocr_dir, out_dir, num_samples, log_file):
+def process_files(image_dir, xml_dir, ocr_dir, out_dir, num_samples, log_file, visualize):
     files = list(map(lambda name: os.path.basename(name).rsplit('.', 1)[0], glob.glob(os.path.join(xml_dir,'*.xml'))))
 
     files.sort()
@@ -116,6 +116,9 @@ def process_files(image_dir, xml_dir, ocr_dir, out_dir, num_samples, log_file):
                         with open(os.path.join(out_dir, "ocr", table_name + '.pkl'), 'wb') as f:
                             pickle.dump(ocr, f)
 
+                        if visualize:
+                            table.visualize(img)
+                            cv2.imwrite(os.path.join(args.out_dir,'vis', table_name + '.png'), img)
                         generated += 1
             except Exception as e:
                 log_data.append("Exception thrown: " + str(e))
@@ -147,6 +150,8 @@ if __name__ == "__main__":
     parser.add_argument("-log", "--log_file", type=str, required=False,
                         help="Output file path for error logging.")
 
+    parser.add_argument("-vis", "--visualize", action="store_true")
+
 
     args = parser.parse_args()
 
@@ -154,5 +159,10 @@ if __name__ == "__main__":
     os.makedirs(os.path.join(args.out_dir,'images'), exist_ok=True)
     os.makedirs(os.path.join(args.out_dir,'ocr'), exist_ok=True)
     os.makedirs(os.path.join(args.out_dir,'gt'), exist_ok=True)
+
+    if args.visualize:
+        os.makedirs(os.path.join(args.out_dir,'vis'), exist_ok=True)
     
-    process_files(args.image_dir, args.xml_dir, args.ocr_dir, args.out_dir, args.num_samples, args.log_file)
+    os.makedirs(args.ocr_dir, exist_ok=True)
+
+    process_files(args.image_dir, args.xml_dir, args.ocr_dir, args.out_dir, args.num_samples, args.log_file, args.visualize)

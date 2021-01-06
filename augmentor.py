@@ -124,6 +124,9 @@ class Augmentor:
         paste_y1 = self.t.gtCells[idx_paste - 1][0].y2
         h = copy_y2 - copy_y1
 
+        if self.image.shape[0] + h > self.doc_shape[0] * 1.5:
+            return False
+
         image_row = self.image[copy_y1:copy_y2, :]
 
         new_shape = list(self.image.shape)
@@ -228,8 +231,7 @@ class Augmentor:
         paste_x1 = self.t.gtCells[0][idx_paste - 1].x2
         w = copy_x2 - copy_x1
 
-        if self.image.shape[1] + w > self.doc_shape[1]:
-            # print("too big", self.image.shape[1] ,'+', w, self.doc_shape[1])
+        if self.image.shape[1] + w > self.doc_shape[1] * 1.5:
             return False
 
         image_col = self.image[:, copy_x1:copy_x2]
@@ -244,7 +246,7 @@ class Augmentor:
         self.image = image_new
 
         ocr_col = get_bounded_ocr(self.ocr, (copy_x1, 0), (copy_x2, self.t.y2))
-        ocr_col = translate_ocr(ocr_col, (0, paste_x1 - copy_x1))
+        ocr_col = translate_ocr(ocr_col, (paste_x1 - copy_x1, 0))
 
         self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (paste_x1, 0), (self.t.x2, self.t.y2), remove_org=True), (w, 0))
         self.ocr += ocr_col
@@ -295,7 +297,7 @@ class Augmentor:
 
         ocr_col = get_bounded_ocr(self.ocr, (x1, 0), (x2, self.t.y2), remove_org=True)
 
-        self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (x1, 0), (self.t.x2, self.t.y2), remove_org=True), (0, x1 - x2))
+        self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (x1, 0), (self.t.x2, self.t.y2), remove_org=True), (x1 - x2, 0))
 
 
         cols = [Column(self.t.x1, self.t.y1, self.t.y2)] + self.t.gtCols
@@ -402,7 +404,7 @@ def augment_table(table, doc_img, doc_ocr):
 
     new_shape = augmentor.image.shape
     # augmentor.visualize("output")
-    if new_shape[0] > doc_img.shape[0] or new_shape[1] > doc_img.shape[1]:
+    if new_shape[0] > doc_img.shape[0] * 1.5 or new_shape[1] > doc_img.shape[1] * 1.5:
         print("Generated image is too large. Discarding sample.")
         return False
 

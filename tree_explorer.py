@@ -6,51 +6,13 @@ import numpy as np
 from xml.dom import minidom
 from xml.etree import ElementTree as ET
 
-from truthpy import Table, GTElement, Row, Column
-
-def translate_ocr(ocr, translation):
-    x_trans, y_trans = translation
-    for i in range(len(ocr)):
-        ocr[i][2] += x_trans
-        ocr[i][3] += y_trans
-        ocr[i][4] += x_trans
-        ocr[i][5] += y_trans
-    return ocr
-
-def get_bounded_ocr(ocr, p1, p2, remove_org=False, threshold=0.5):
-    x1, y1 = p1
-    x2, y2 = p2
-    bounded_ocr = []
-
-    for i in range(len(ocr)):
-        _x1 = max(ocr[i][2], x1)    
-        _y1 = max(ocr[i][3], y1)
-        _x2 = min(ocr[i][4], x2)
-        _y2 = min(ocr[i][5], y2)
-
-        if _x1 < _x2 and _y1 < _y2:
-            w = ocr[i][4] - ocr[i][2]
-            h = ocr[i][5] - ocr[i][3]
-
-            area_intersection = (_x2 - _x1) * (_y2 - _y1)
-            area_word = w*h
-            if area_intersection / area_word > threshold:
-                bounded_ocr.append(ocr[i].copy())
-
-    if remove_org:
-        ocr[:] = [word for word in ocr if word not in bounded_ocr]
-
-    return bounded_ocr
+from truthpy import Table, GTElement, Row, Column, RowSpan, ColSpan
 
 class Augmentor:
-    def __init__(self, table, doc_image, doc_ocr):
+    def __init__(self, table):
         self.t = table
         
-        self.doc_shape = doc_image.shape[:2]
-        self.image = doc_image[self.t.y1:self.t.y2, self.t.x1:self.t.x2]
-
-        self.ocr = translate_ocr(get_bounded_ocr(doc_ocr, (self.t.x1, self.t.y1), (self.t.x2, self.t.y2)), (-self.t.x1, -self.t.y1))
-
+        self.doc_shape = (table.y2, table.x2)
         self.t.move(-self.t.x1, -self.t.y1)
 
     def get_column_range(self, col):
@@ -124,25 +86,8 @@ class Augmentor:
         paste_y1 = self.t.gtCells[idx_paste - 1][0].y2
         h = copy_y2 - copy_y1
 
-        if self.image.shape[0] + h > self.doc_shape[0] * 1.5:
+        if self.t.y2 + h > self.doc_shape[0] * 1.5:
             return False
-
-        image_row = self.image[copy_y1:copy_y2, :]
-
-        new_shape = list(self.image.shape)
-        new_shape[0] += image_row.shape[0]
-
-        image_new = np.zeros((new_shape), dtype=self.image.dtype)
-        image_new[:paste_y1, :]             = self.image[:paste_y1, :]
-        image_new[paste_y1:paste_y1 + h, :] = image_row
-        image_new[paste_y1 + h:, :]         = self.image[paste_y1:, :]
-        self.image = image_new
-
-        ocr_row = get_bounded_ocr(self.ocr, (0, copy_y1), (self.t.x2, copy_y2))
-        ocr_row = translate_ocr(ocr_row, (0, paste_y1 - copy_y1))
-
-        self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (0, paste_y1), (self.t.x2, self.t.y2), remove_org=True), (0, h))
-        self.ocr += ocr_row
 
         rows = [Row(self.t.x1, self.t.y1, self.t.x2)] + self.t.gtRows
 
@@ -178,20 +123,8 @@ class Augmentor:
         y2 = self.t.gtCells[idx_2][0].y2
         h = y2 - y1
 
-        if h >= self.image.shape[0] * 0.6 or len(self.t.gtCells) - (idx_2 - idx_1 + 1) <= 3:
+        if h >= self.t.y2 * 0.6 or len(self.t.gtCells) - (idx_2 - idx_1 + 1) <= 3:
             return False
-
-        new_shape = list(self.image.shape)
-        new_shape[0] -= h
-
-        image_new = np.zeros((new_shape), dtype=self.image.dtype)
-        image_new[:y1, :]             = self.image[:y1, :]
-        image_new[y1:, :]         = self.image[y2:, :]
-        self.image = image_new
-
-        ocr_row = get_bounded_ocr(self.ocr, (0, y1), (self.t.x2, y2), remove_org=True)
-
-        self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (0, y1), (self.t.x2, self.t.y2), remove_org=True), (0, y1 - y2))
 
         rows = [Row(self.t.x1, self.t.y1, self.t.x2)] + self.t.gtRows
         rows = [row for row in rows if row not in rows[idx_1: idx_2 + 1]]
@@ -231,25 +164,8 @@ class Augmentor:
         paste_x1 = self.t.gtCells[0][idx_paste - 1].x2
         w = copy_x2 - copy_x1
 
-        if self.image.shape[1] + w > self.doc_shape[1] * 1.5:
+        if self.t.x2 + w > self.doc_shape[1] * 1.5:
             return False
-
-        image_col = self.image[:, copy_x1:copy_x2]
-
-        new_shape = list(self.image.shape)
-        new_shape[1] += image_col.shape[1]
-
-        image_new = np.zeros((new_shape), dtype=self.image.dtype)
-        image_new[:, :paste_x1]             = self.image[:, :paste_x1]
-        image_new[:, paste_x1:paste_x1 + w] = image_col
-        image_new[:, paste_x1 + w:]         = self.image[:, paste_x1:]
-        self.image = image_new
-
-        ocr_col = get_bounded_ocr(self.ocr, (copy_x1, 0), (copy_x2, self.t.y2))
-        ocr_col = translate_ocr(ocr_col, (paste_x1 - copy_x1, 0))
-
-        self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (paste_x1, 0), (self.t.x2, self.t.y2), remove_org=True), (w, 0))
-        self.ocr += ocr_col
 
         cols = [Column(self.t.x1, self.t.y1, self.t.y2)] + self.t.gtCols
 
@@ -284,21 +200,8 @@ class Augmentor:
         x2 = self.t.gtCells[0][idx_2].x2
         w = x2 - x1
 
-        if w >= self.image.shape[1] * 0.7 or len(self.t.gtCells[0]) - (idx_2 - idx_1 + 1) <= 2:
+        if w >= self.t.x2 * 0.7 or len(self.t.gtCells[0]) - (idx_2 - idx_1 + 1) <= 2:
             return False
-
-        new_shape = list(self.image.shape)
-        new_shape[1] -= w
-
-        image_new = np.zeros((new_shape), dtype=self.image.dtype)
-        image_new[:, :x1] = self.image[:, :x1]
-        image_new[:, x1:] = self.image[:, x2:]
-        self.image = image_new
-
-        ocr_col = get_bounded_ocr(self.ocr, (x1, 0), (x2, self.t.y2), remove_org=True)
-
-        self.ocr += translate_ocr(get_bounded_ocr(self.ocr, (x1, 0), (self.t.x2, self.t.y2), remove_org=True), (x1 - x2, 0))
-
 
         cols = [Column(self.t.x1, self.t.y1, self.t.y2)] + self.t.gtCols
         cols = [col for col in cols if col not in cols[idx_1: idx_2 + 1]]
@@ -319,96 +222,80 @@ class Augmentor:
         return True
 
     def visualize(self, window="image"):
-        image = self.image.copy()
-        if len(self.image.shape) == 2 or self.image.shape[2] < 3:
+        image = np.ones((self.t.y2, self.t.x2, 3), dtype=np.uint8) * 255
+        if len(image.shape) == 2 or image.shape[2] < 3:
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
         self.t.visualize(image)
 
-        for word in self.ocr:
-            cv2.rectangle(image, tuple(word[2:4]), tuple(word[4:6]), (0, 0, 0), 1)
-
         cv2.imshow(window, image)
         cv2.waitKey(0)
+
+# MAX_DEPTH = 5
+# MAX_WIDTH = [10, 5, 2, 1, 1]
+# MAX_ATTEMPTS = [10, 5, 2, 1, 1]
+
+MAX_DEPTH = 10
+MAX_WIDTH = [8, 4, 2, 2, 2, 1, 1, 1, 1, 1]
+MAX_ATTEMPTS = [x * 2 for x in MAX_WIDTH]
 
 def apply_action(obj, action):
     return getattr(obj, action[0])(*action[1])
 
-def augment_table(table, doc_img, doc_ocr):
-    augmentor = Augmentor(table, doc_img, doc_ocr)
+def DFS(augmentor, depth, actions):
 
-    crop_shape = augmentor.image.shape
+    if augmentor.t.y2 > augmentor.doc_shape[0] * 1.5 or augmentor.t.x2 > augmentor.doc_shape[1] * 1.5 or depth < 5:
+        return_list = []
+    else:
+        return_list = [(
+            augmentor.t, 
+            {
+                "h" : len(augmentor.t.gtCells),
+                "w" : len(augmentor.t.gtCells[0]),
+                "col_spans" : len([x for x in augmentor.t.gtSpans if isinstance(x, ColSpan)]),
+                "row_spans" : len([x for x in augmentor.t.gtSpans if isinstance(x, RowSpan)]),
+            },
+            actions
+        )]
 
-    # augmentor.visualize("input")
+    if depth < MAX_DEPTH:
+        counter = 0
+        for i in range(MAX_ATTEMPTS[depth]):
+            if counter >= MAX_WIDTH[depth]:
+                break
 
-    column_rules = [
-        (8, (0, 1), (0, 2)),
-        (5, (0, 2), (0, 2)),
-        (3, (1, 2), (0, 1)),
-    ] 
+            prob = random.random()
 
-    row_rules = [
-        (14, (0, 2), (1, 4)),
-        (9, (1, 4), (1, 3)),
-        (5, (1, 3), (1, 2)),
-        (3, (0, 2), (0, 1)),
-        (2, (0, 1), (0, 0)),
-    ]
-    # ^ (min_size, (replicate_range), (remove_range))
-
-    edited = False
-
-
-    for col, replicate_range, remove_range in column_rules:
-        if len(augmentor.t.gtCells[0]) >= col:
-
-            num_add = random.randint(*replicate_range)
-            counter = 0
-            while counter < num_add:
-                size = len(augmentor.t.gtCells[0])
+            tmp = copy.deepcopy(augmentor)
+            if prob < 0.25:
+                size = len(tmp.t.gtCells[0])
                 i = random.choice(range(1, size))
                 j = random.choice(range(1, size + 1))
-                edited |= augmentor.replicate_column(i, j)
+                action = ('replicate_column', (i, j))
 
-                counter += max(1, len(augmentor.t.gtCells[0]) - size)
-                
-            num_remove = random.randint(*remove_range)
-            counter = 0
-            while counter < num_remove:
-                size = len(augmentor.t.gtCells[0])
+            elif prob < 0.5:
+                size = len(tmp.t.gtCells[0])
                 i = random.choice(range(1, size))
-                edited |= augmentor.remove_column(i)
+                action = ('remove_column', (i,))
 
-                counter += max(1, size - len(augmentor.t.gtCells[0]))
-            break
-
-    for row, replicate_range, remove_range in row_rules:
-        if len(augmentor.t.gtCells) >= row:
-
-            num_add = random.randint(*replicate_range)
-            counter = 0
-            while counter < num_add:
-                size = len(augmentor.t.gtCells)
+            elif prob < 0.75:
+                size = len(tmp.t.gtCells)
                 i = random.choice(range(1, size))
                 j = random.choice(range(1, size + 1))
-                edited |= augmentor.replicate_row(i, j)
+                action = ('replicate_row', (i, j))
 
-                counter += max(1, len(augmentor.t.gtCells) - size)
-
-            num_remove = random.randint(*remove_range)
-            counter = 0
-            while counter < num_remove:
-                size = len(augmentor.t.gtCells)
+            else:
+                size = len(tmp.t.gtCells)
                 i = random.choice(range(1, size))
-                edited |= augmentor.remove_row(i)
+                action = ('remove_row', (i,))
 
-                counter += max(1, size - len(augmentor.t.gtCells))
-            break
+            edited = apply_action(tmp, action)
+            if edited:
+                counter += 1
+                actions_copy = actions.copy()
+                actions_copy.append(action)
+                return_list += DFS(tmp, depth + 1, actions_copy)
+    return return_list
 
-    new_shape = augmentor.image.shape
-    # augmentor.visualize("output")
-    if new_shape[0] > doc_img.shape[0] * 1.5 or new_shape[1] > doc_img.shape[1] * 1.5:
-        print("Generated image is too large. Discarding sample.")
-        return False
-
-    return augmentor.t, augmentor.image, augmentor.ocr
+def dfs_wrapper(table):
+    return DFS(Augmentor(table), 0, [])
